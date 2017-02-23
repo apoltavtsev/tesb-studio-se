@@ -34,7 +34,7 @@ imports="
     }
 
     String uri = builder.build();
-
+    String responseClass = "javax.ws.rs.core.Response.class";
 	if (node.getIncomingConnections().isEmpty()) {
 %>
 		from(<%=uri%>)
@@ -50,7 +50,7 @@ imports="
 		if ("MANUAL".equals(ElementParameterParser.getValue(node, "__SERVICE_TYPE__"))) {
 			String acceptType = paramsHelper.getVisibleStringParam("__ACCEPT_TYPE__");
 			String responseBean = paramsHelper.getVisibleStringParam("__RESPONSE_BEAN__");
-			String responseClass = "*/*".equals(acceptType) ? "String.class" : "org.w3c.dom.Document.class";
+			responseClass = "*/*".equals(acceptType) ? "String.class" : "org.w3c.dom.Document.class";
 			responseClass = responseBean == null || responseBean.isEmpty() ? responseClass : responseBean + ".class";
 			String contentType = paramsHelper.getVisibleStringParam("__CONTENT_TYPE__");
 %>
@@ -58,7 +58,6 @@ imports="
 		.setHeader(org.apache.camel.Exchange.HTTP_METHOD, constant("<%=ElementParameterParser.getValue(node, "__HTTP_METHOD__")%>"))
 <% if (!acceptType.isEmpty()) { %>
 		.setHeader(org.apache.camel.Exchange.ACCEPT_CONTENT_TYPE, constant("<%=acceptType%>"))
-		.setHeader(org.apache.camel.component.cxf.common.message.CxfConstants.CAMEL_CXF_RS_RESPONSE_CLASS, constant(<%=responseClass%>))
 <% } %>
 <% if (!contentType.isEmpty()) { %>
 		.setHeader(org.apache.camel.Exchange.CONTENT_TYPE, constant("<%=contentType%>"))
@@ -76,6 +75,25 @@ imports="
 			})
 <% } %>
 		.inOut(<%=uri%>)
+        .unmarshal(new  org.apache.camel.spi.DataFormat() {
+           public java.lang.Object unmarshal(org.apache.camel.Exchange exchange, java.io.InputStream is) throws java.lang.Exception {
+		      java.lang.Object b = exchange.getOut().getBody();
+		      if(b instanceof org.apache.cxf.jaxrs.impl.ResponseImpl){
+		         org.apache.cxf.jaxrs.impl.ResponseImpl r = (org.apache.cxf.jaxrs.impl.ResponseImpl)b;
+		         if ("javax.ws.rs.core.Response.class".equalsIgnoreCase("<%=responseClass%>")) {
+		            return <%=responseClass%>.cast(r);
+		         }
+		         int status = r.getStatus();
+		         if ((status < 200 || status == 204) && r.getLength() <= 0 || status >= 300) {
+		            return null;
+		         }
+		         return r.doReadEntity(<%=responseClass%>, <%=responseClass%>, new java.lang.annotation.Annotation[]{});
+		      }
+			  return b;
+		   }
+		   public void marshal(org.apache.camel.Exchange exchange, Object o, java.io.OutputStream os)
+					throws Exception {}
+		})
 <%
 	}
 %>
